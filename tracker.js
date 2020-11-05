@@ -6,6 +6,9 @@ const urlParse = require('url').parse;
 // crypto module to help us create a random number for our buffer
 const crypto = require('crypto');
 
+const torrentParser = require('./torrent-parser');
+const util = require('./util');
+
 module.exports.getPeers = (torrent, callback) => {
     /*
      creating a new socket instance
@@ -23,7 +26,7 @@ module.exports.getPeers = (torrent, callback) => {
             // 2. recieve and parse connect response
             const connResp = parseConnectionResponse(response);
             // 3. send announce request
-            const announceReq = buildAnnounceRequest(connResp.connectionId);
+            const announceReq = buildAnnounceRequest(connResp.connectionId, torrent);
 
             udpSend(socket, announceReq, url);
 
@@ -96,10 +99,62 @@ function parseConnectionResponse(response){
     }
 }
 
-function buildAnnounceRequest(connectionId){
-    // TODO
+function buildAnnounceRequest(connectionId, torrent, port=6881){
+    const buffer = Buffer.allocUnsafe(98);
+
+    // connection Id
+    connectionId.copy(buffer, 0);
+    // action
+    buffer.writeUInt32BE(1, 8);
+    // transaction id
+    crypto.randomBytes(4).copy(buffer, 12);
+    // info hash
+    torrentParser.infoHash(torrent).copy(buffer, 16);
+    // peerId
+    util.genId().copy(buffer, 36);
+    // downloaded 
+    Buffer.alloc(8).copy(buffer, 56);
+    // left
+    torrentParser.size(torrent).copy(buffer, 64);
+    // uploaded 
+    Buffer.alloc(8).copy(buffer, 72);
+    // event 
+    buffer.writeUInt32BE(0 , 80);
+    // ip address
+    buffer.writeUInt32BE(0, 80);
+    // key
+    crypto.randomBytes(4).copy(buffer, 88);
+    /* 
+        num want 
+        pointing out that usage of writeInt32BE instead of writeUIntBE
+        the number is negative so not using the unsigned version
+    */
+    buffer.writeInt32BE(-1, 92);
+    // port
+    buffer.writeUInt32BE(port, 96);
+
+    return buffer;
 }
 
-function parseAnnounceResponse(response){
-    // TODO
+function parseAnnounceResponse(response) {
+    function group(iterable, groupSize) {
+        let groups = [];
+        for ( let i = 0; i < iterable.length; i += groupSize){
+            groups.push(iterable.slice(i, i + groupSize));
+        }
+        return groups;
+    }
+
+    return{
+        aaction: response.readUInt32BE(0),
+        transactionId: response.readUInt32BE(4),
+        leechers: response.readUInt32BE(8),
+        seeders: response.readUInt32BE(12),
+        peers: group(response.slice(20), 6).map(address => {
+            return{
+                ip: address.slice(0, 4).join('.'),
+                port: address.readUInt16BE(4)
+            }
+        })
+    }
 }
