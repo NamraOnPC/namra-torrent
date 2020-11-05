@@ -7,7 +7,7 @@ const urlParse = require('url').parse;
 const crypto = require('crypto');
 
 const torrentParser = require('./torrent-parser');
-const util = require('./util');
+const util = require('../util');
 
 module.exports.getPeers = (torrent, callback) => {
     /*

@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "bencode": "^2.0.1",
+    "bignum": "^0.13.1",
     "buffer": "^5.7.0",
     "crypto": "^1.0.1",
     "dgram": "^1.0.1",
