@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const net = require('net');
 const Buffer = require('buffer').Buffer;
 const tracker = require('./tracker');
@@ -7,10 +8,11 @@ const message = require('./message');
 const Pieces = require('./Pieces');
 const Queue = require('./Queue')
 
-module.exports =  torrent => {
+module.exports =  (torrent, path) => {
     tracker.getPeers(torrent, peers => {
         const pieces = new Pieces(torrent);
-        peers.forEach(peer => download(peer, torrent, pieces));
+        const file = fs.openSync(path, 'w');
+        peers.forEach(peer => download(peer, torrent, pieces,file));
     });
 };
 
@@ -42,17 +44,17 @@ function onWholeMsg(socket, callback) {
 }
 
 // function will check what kind of message we are receiving and handle it accordingly. 
-function msgHandler(msg, socket, pieces, queue) {
+function msgHandler(msg, socket, pieces, queue, torrent, file) {
   if (isHandshake(msg)){ 
     socket.write(message.buildInterested());
   }else{
     const m = message.parse(msg);
 
-    if (m.id === 0) chokeHandler();
+    if (m.id === 0) chokeHandler(socket);
     if (m.id === 1) unchokeHandler(socket, pieces, queue);
-    if (m.id === 4) haveHandler(m.payload);
-    if (m.id === 5) bitfieldHandler(m.payload);
-    if (m.id === 7) pieceHandler(m.payload);
+    if (m.id === 4) haveHandler(socket, pieces, queue, m.payload);
+    if (m.id === 5) bitfieldHandler(socket, pieces, queue, m.payload);
+    if (m.id === 7) pieceHandler(socket, pieces, queue, torrent, file, m.payload);
   }
 }
 
@@ -83,8 +85,21 @@ function bitfieldHandler(socket, pieces, queue, payload) {
   if (queueEmpty) requestPiece(socket, pieces, queue);
 }
 
-function pieceHandler() {
-  // TODO
+function pieceHandler(socket, pieces, queue, torrent, file, pieceResp) {
+  pieces.printPercentDone();
+
+  pieces.addReceived(pieceResp);
+
+  const offset = pieceResp.index * torrent.info['piece length'] + pieceResp.begin;
+  fs.write(file, pieceResp.block, 0, pieceResp.block.length, offset, () => {});
+
+  if (pieces.isDone()) {
+    console.log('DONE!');
+    socket.end();
+    try { fs.closeSync(file); } catch(e) {}
+  } else {
+    requestPiece(socket,pieces, queue);
+  }
 }
 
 function requestPiece(socket, pieces, queue) {
@@ -92,9 +107,9 @@ function requestPiece(socket, pieces, queue) {
 
   while (queue.queue.length) {
     const pieceBlock = queue.deque();
-    if (pieces.needed(pieceIndex)) {
+    if (pieces.needed(pieceBlock)) {
       socket.write(message.buildRequest(pieceIndex));
-      pieces.addRequested();
+      pieces.addRequested(pieceBlock);
       break;
     }
   }

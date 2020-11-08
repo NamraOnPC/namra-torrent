@@ -2,6 +2,7 @@
 
 const Buffer = require('buffer').Buffer;
 const torrentParser = require('./torrent-parser');
+const util = require('../util')
 
 /*
     handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
