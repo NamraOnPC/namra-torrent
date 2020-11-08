@@ -2,7 +2,7 @@
 
 ## Personalized Bittorrent
 
-Currently this can only download single files, not files in folders.
+Currently this can only download single files, not multiple files in multiple folders.
 
 What's to come next:
 
